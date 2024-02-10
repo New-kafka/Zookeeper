@@ -1,0 +1,14 @@
+---
+- name: Deploy GoLang app
+  hosts: all
+  become: true
+  tasks:
+    - name: Copy Docker Compose file
+      copy:
+        src: ./docker-compose.yml
+        dest: /home/ubuntu/docker-compose.yml
+
+    - name: Deploy using Docker Compose
+      command: docker-compose up -d --force-recreate
+      args:
+        chdir: /home/ubuntu/
