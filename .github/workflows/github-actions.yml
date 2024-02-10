@@ -1,0 +1,43 @@
+name: CI - Build Image
+
+env:
+  DOTNET_VERSION: '6.0.x'
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@main
+
+      - name: 'Setup Go'
+        uses: actions/setup-go@v4
+        with:
+          go-version: '^1.21.5'
+
+      - name: 'Go Tidy'
+        run: make resolve
+
+      - name: 'Build Binary'
+        run: make build
+
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_TOKEN }}
+
+      - name: 'Build Inventory Image'
+        run: |
+          docker build -t ghcr.io/new-kafka/zookeeper:${{ github.sha }} .
+          docker tag ghcr.io/new-kafka/zookeeper:${{ github.sha }} ghcr.io/new-kafka/zookeeper:latest
+          docker push ghcr.io/new-kafka/zookeeper:${{ github.sha }}
+          docker push ghcr.io/new-kafka/zookeeper:latest
