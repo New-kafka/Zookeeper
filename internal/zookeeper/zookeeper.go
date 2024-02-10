@@ -21,7 +21,18 @@ type Zookeeper struct {
 //
 // TODO: read database connection info from a config file
 func NewZookeeper() *Zookeeper {
-	conninfo := "user=postgres password=postgres dbname=postgres sslmode=disable"
+	type postgresConfig struct {
+		Host     string `yaml:"host"`
+		Port     string `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		Dbname   string `yaml:"dbname"`
+	}
+	var postgres postgresConfig
+	if err := viper.UnmarshalKey("postgres", &postgres); err != nil {
+		log.Fatal(err)
+	}
+	conninfo := "host=" + postgres.Host + " port=" + postgres.Port + " user=" + postgres.User + " password=" + postgres.Password + " dbname=" + postgres.Dbname + " sslmode=disable"
 	db, err := sql.Open("postgres", conninfo)
 	if err != nil {
 		panic(err)
@@ -56,7 +67,7 @@ func (s *Zookeeper) registerRoutes() {
 
 // Run runs the Zookeeper server
 func (s *Zookeeper) Run() {
-	s.gin.Run("localhost:" + viper.GetString("port"))
+	s.gin.Run("0.0.0.0:" + viper.GetString("port"))
 }
 
 // Push pushes a message to the queueName
