@@ -2,6 +2,7 @@ package zookeeper
 
 import (
 	"Zookeeper/internal/broker"
+	"log"
 	"math/rand"
 )
 
@@ -20,11 +21,13 @@ func (z *Zookeeper) GetBrokers(queueName string) []*broker.Client {
 func (z *Zookeeper) GetMasterBroker(queueName string) *broker.Client {
 	rows, _ := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = true", queueName) // TODO: handle logging errors
 	defer rows.Close()
+	log.Print("Getting master broker from database")
 	for rows.Next() {
 		var queue string
 		var brokerName string
 		var isMaster bool
-		rows.Scan(&queue, &brokerName, &isMaster) // TODO: handle logging errors
+		rows.Scan(&queue, &isMaster, &brokerName) // TODO: handle logging errors
+		log.Printf("Master broker for queue %s is %s", queue, brokerName)
 		if isMaster {
 			return z.brokers[brokerName]
 		}
@@ -41,7 +44,7 @@ func (z *Zookeeper) GetReplicaBrokers(queueName string) []*broker.Client {
 		var queue string
 		var brokerName string
 		var isMaster bool
-		rows.Scan(&queue, &brokerName, &isMaster) // TODO: handle logging errors
+		rows.Scan(&queue, &isMaster, &brokerName) // TODO: handle logging errors
 		if !isMaster {
 			result = append(result, z.brokers[brokerName])
 		}
@@ -58,12 +61,17 @@ func (z *Zookeeper) GetReplicaBrokers(queueName string) []*broker.Client {
 //
 // TODO: add a replica factor k and add queue to k brokers
 func (z *Zookeeper) AssignQueue(queueName string) {
+	log.Print("Assigning queue to brokers")
+
 	randomIndex := rand.Intn(len(z.brokers))
 	counter := 0
 	for _, b := range z.brokers {
 		isMaster := counter == randomIndex
 		counter++
-		b.AddQueue(queueName, isMaster)
+		err := b.AddQueue(queueName, isMaster)
+		if err != nil {
+			log.Print(err)
+		}
 		z.db.Exec("INSERT INTO queues (queue, broker, is_master) VALUES ($1, $2, $3)", queueName, b.Name, isMaster) // TODO: handle logging errors
 	}
 }

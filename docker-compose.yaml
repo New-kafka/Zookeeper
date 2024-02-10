@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  postgres:
+      container_name: "postgres-zookeeper"
+      image: postgres:13
+      environment:
+        POSTGRES_USER: postgres
+        POSTGRES_DB: postgres
+        POSTGRES_PASSWORD: postgres
+      ports:
+        - "5432:5432"
+      volumes:
+        - ./data:/var/lib/postgresql/data
+        - ./init.sql:/docker-entrypoint-initdb.d/init.sql
