@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -65,7 +64,6 @@ func (b *Client) Do(method, path string, req interface{}, resp interface{}) erro
 	}
 
 	data, err := processRequest(httpRequest)
-	log.Printf("Response from broker %s: %s", b.Name, string(data))
 	if err == nil {
 		if resp != nil {
 			return json.Unmarshal(data, resp)
@@ -77,9 +75,8 @@ func (b *Client) Do(method, path string, req interface{}, resp interface{}) erro
 
 // Push pushes a message to the queueName
 func (b *Client) Push(req *types.Element) error {
-	log.Printf("Pushing message to queue %s in broker %s", req.QueueName, b.Name)
 	replaceDict := map[string]string{
-		"{queue_name}": req.QueueName,
+		"{queue_name}": req.Key,
 	}
 	apiURL := substringReplace(routes.RoutePush, replaceDict)
 	request := map[string][]byte{
@@ -104,7 +101,6 @@ func (b *Client) Front() (*types.Element, error) {
 
 // AddQueue adds a queue to the broker
 func (b *Client) AddQueue(queueName string, isMaster bool) error {
-	log.Printf("Adding queue %s to broker %s", queueName, b.Name)
 	req := &types.AddQueueRequest{
 		QueueName: queueName,
 		IsMaster:  isMaster,
@@ -114,14 +110,15 @@ func (b *Client) AddQueue(queueName string, isMaster bool) error {
 }
 
 // Remove pops a message from queue \"queueName\"
-func (b *Client) Remove(queueName string) error {
+func (b *Client) Remove(key string) error {
 	replaceDict := map[string]string{
-		"{queue_name}": queueName,
+		"{queue_name}": key,
 	}
 	apiURL := substringReplace(routes.RoutePop, replaceDict)
 	req := map[string]string{
-		"queue_name": queueName,
+		"queue_name": key,
 	}
+
 	err := b.Do(http.MethodPost, apiURL, req, nil)
 	return err
 }
