@@ -1,8 +1,8 @@
 package routes
 
 const (
-	RoutePush     = "/queue/{queue_name}/push"
-	RoutePop      = "/queue/{queue_name}/pop"
-	RouteFront    = "/front"
-	RouteAddQueue = "/queue"
+	RoutePush  = "/key/{key}/push"
+	RoutePop   = "/key/{key}/pop"
+	RouteFront = "/front"
+	RouteKey   = "/key"
 )

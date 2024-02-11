@@ -5,8 +5,8 @@ import (
 	"Zookeeper/internal/types"
 	"bytes"
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -32,7 +32,8 @@ func (b *Client) NewRequest(method string, url string, route string, body io.Rea
 
 // HealthCheck checks the health of the broker
 func (b *Client) HealthCheck() error {
-	return nil
+	err := b.Do(http.MethodGet, "/healthz", nil, nil)
+	return err
 }
 
 func processRequest(req *http.Request) ([]byte, error) {
@@ -53,6 +54,7 @@ func (b *Client) Do(method, path string, req interface{}, resp interface{}) erro
 	var body io.Reader
 	if req != nil {
 		data, err := json.Marshal(req)
+		log.Info(string(data))
 		if err != nil {
 			return err
 		}
@@ -65,7 +67,6 @@ func (b *Client) Do(method, path string, req interface{}, resp interface{}) erro
 	}
 
 	data, err := processRequest(httpRequest)
-	log.Printf("Response from broker %s: %s", b.Name, string(data))
 	if err == nil {
 		if resp != nil {
 			return json.Unmarshal(data, resp)
@@ -75,11 +76,10 @@ func (b *Client) Do(method, path string, req interface{}, resp interface{}) erro
 	return err
 }
 
-// Push pushes a message to the queueName
+// Push pushes a message to the key
 func (b *Client) Push(req *types.Element) error {
-	log.Printf("Pushing message to queue %s in broker %s", req.QueueName, b.Name)
 	replaceDict := map[string]string{
-		"{queue_name}": req.QueueName,
+		"{key}": req.Key,
 	}
 	apiURL := substringReplace(routes.RoutePush, replaceDict)
 	request := map[string][]byte{
@@ -92,7 +92,7 @@ func (b *Client) Push(req *types.Element) error {
 	return nil
 }
 
-// Front Get front value of any queue that is a master and not empty
+// Front Get front value of any key that is a master and not empty
 func (b *Client) Front() (*types.Element, error) {
 	res := &types.Element{}
 	err := b.Do(http.MethodGet, routes.RouteFront, nil, res)
@@ -102,26 +102,26 @@ func (b *Client) Front() (*types.Element, error) {
 	return res, nil
 }
 
-// AddQueue adds a queue to the broker
-func (b *Client) AddQueue(queueName string, isMaster bool) error {
-	log.Printf("Adding queue %s to broker %s", queueName, b.Name)
-	req := &types.AddQueueRequest{
-		QueueName: queueName,
-		IsMaster:  isMaster,
+// AddKey adds a queue to the broker
+func (b *Client) AddKey(key string, isMaster bool) error {
+	req := &types.AddKeyRequest{
+		Key:      key,
+		IsMaster: isMaster,
 	}
-	err := b.Do(http.MethodPost, routes.RouteAddQueue, req, nil)
+	err := b.Do(http.MethodPost, routes.RouteKey, req, nil)
 	return err
 }
 
 // Remove pops a message from queue \"queueName\"
-func (b *Client) Remove(queueName string) error {
+func (b *Client) Remove(key string) error {
 	replaceDict := map[string]string{
-		"{queue_name}": queueName,
+		"{key}": key,
 	}
 	apiURL := substringReplace(routes.RoutePop, replaceDict)
 	req := map[string]string{
-		"queue_name": queueName,
+		"key": key,
 	}
+
 	err := b.Do(http.MethodPost, apiURL, req, nil)
 	return err
 }

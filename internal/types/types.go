@@ -1,8 +1,8 @@
 package types
 
 type PushRequest struct {
-	Key   string `json:"key"`
-	Value []byte `json:"value"`
+	Key   string `json:"key" binding:"required"`
+	Value []byte `json:"value" binding:"required"`
 }
 
 type PushResponse struct {
@@ -10,8 +10,8 @@ type PushResponse struct {
 }
 
 type Element struct {
-	QueueName string `json:"queue_name"`
-	Value     []byte `json:"value"`
+	Key   string `json:"key" binding:"required"`
+	Value []byte `json:"value" binding:"required"`
 }
 
 type PopResponse struct {
@@ -19,7 +19,7 @@ type PopResponse struct {
 	Value []byte `json:"value"`
 }
 
-type AddQueueRequest struct {
-	QueueName string `json:"queue_name"`
-	IsMaster  bool   `json:"is_master"`
+type AddKeyRequest struct {
+	Key      string `json:"key"`
+	IsMaster bool   `json:"isMaster"`
 }
