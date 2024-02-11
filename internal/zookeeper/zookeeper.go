@@ -78,7 +78,7 @@ func NewZookeeper() *Zookeeper {
 	}
 
 	p := ginprometheus.NewPrometheus("gin")
-	p.Use(r)
+	p.Use(gs.gin)
 
 	gs.registerRoutes()
 	return gs
