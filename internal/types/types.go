@@ -19,7 +19,7 @@ type PopResponse struct {
 	Value []byte `json:"value"`
 }
 
-type AddQueueRequest struct {
-	QueueName string `json:"queue_name"`
-	IsMaster  bool   `json:"is_master"`
+type AddKeyRequest struct {
+	Key      string `json:"key"`
+	IsMaster bool   `json:"isMaster"`
 }

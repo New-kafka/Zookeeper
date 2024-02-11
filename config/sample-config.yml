@@ -1,9 +1,9 @@
 health_check_path: "/healthz"
 port: 8000
+replica: 1
 brokers:
   - name: "node1"
     host: "http://broker:8080"
-
 postgres:
   host: "postgres-zookeeper"
   port: 5432

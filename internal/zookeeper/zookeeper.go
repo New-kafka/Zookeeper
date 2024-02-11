@@ -15,6 +15,7 @@ type Zookeeper struct {
 	gin     *gin.Engine
 	db      *sql.DB
 	brokers map[string]*broker.Client
+	replica int
 }
 
 // NewZookeeper returns a new Zookeeper instance
@@ -51,8 +52,9 @@ func NewZookeeper() *Zookeeper {
 	}).Debugf("Connected to database successfully")
 
 	gs := &Zookeeper{
-		gin: gin.Default(),
-		db:  db,
+		gin:     gin.Default(),
+		db:      db,
+		replica: viper.GetInt("replica"),
 	}
 
 	gs.brokers = make(map[string]*broker.Client)
@@ -95,7 +97,7 @@ func (s *Zookeeper) Run() {
 	}
 }
 
-// Push pushes a message to the queueName
+// Push pushes a message to the key
 func (s *Zookeeper) Push(c *gin.Context) {
 	elem := &types.Element{}
 	if err := c.ShouldBindJSON(&elem); err != nil {
@@ -108,11 +110,11 @@ func (s *Zookeeper) Push(c *gin.Context) {
 		log.WithFields(log.Fields{
 			"key": elem.Key,
 		}).Infof("No master broker found for key. Assigning one...")
-		err := s.AssignQueue(elem.Key)
+		err := s.AssignKey(elem.Key)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"key": elem.Key,
-			}).Info("Couldn't assign key to a broker: %s", err.Error())
+			}).Warn("Couldn't assign key to a broker: %s", err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -125,7 +127,7 @@ func (s *Zookeeper) Push(c *gin.Context) {
 			log.WithFields(log.Fields{
 				"key":    elem.Key,
 				"broker": b.Name,
-			}).Info("Couldn't push message to broker: %s", err.Error())
+			}).Warnf("Couldn't push message to broker: %s", err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -140,6 +142,10 @@ func (s *Zookeeper) Pop(c *gin.Context) {
 	var res *types.Element
 	for _, b := range s.brokers {
 		var err error
+		log.WithFields(log.Fields{
+			"broker": b.Name,
+		}).Info("Getting front value from broker")
+
 		res, err = b.Front()
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -147,7 +153,7 @@ func (s *Zookeeper) Pop(c *gin.Context) {
 			}).Warnf("Couldn't get front value: %s", err.Error())
 			continue
 		}
-		if res == nil {
+		if res.Key == "" {
 			continue
 		}
 		log.WithFields(log.Fields{
@@ -167,21 +173,21 @@ func (s *Zookeeper) Pop(c *gin.Context) {
 	log.WithFields(log.Fields{
 		"key":   res.Key,
 		"value": res.Value,
-	}).Info("Popped message from queue")
+	}).Info("Popped message from key")
 	c.JSON(200, gin.H{"message": "ok", "key": res.Key, "value": res.Value})
 }
 
 // Erase remove a message from queueName. It should be called after a message is popped from queueName
-func (s *Zookeeper) Erase(queueName string) {
+func (s *Zookeeper) Erase(key string) {
 	log.WithFields(log.Fields{
-		"key": queueName,
+		"key": key,
 	}).Info("Erasing one message of a key from master and replica brokers")
-	replicas := s.GetBrokers(queueName)
+	replicas := s.GetBrokers(key)
 	for _, b := range replicas {
-		err := b.Remove(queueName)
+		err := b.Remove(key)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key":    queueName,
+				"key":    key,
 				"broker": b.Name,
 			}).Warnf("Couldn't remove message from broker: %s", err.Error())
 		}

@@ -4,34 +4,34 @@ import (
 	"Zookeeper/internal/broker"
 	"database/sql"
 	log "github.com/sirupsen/logrus"
-	"math/rand"
+	"time"
 )
 
 // GetBrokers returns all brokers in the cluster, including the master and replicas
-// which are responsible for the queueName
-func (z *Zookeeper) GetBrokers(queueName string) []*broker.Client {
+// which are responsible for the key
+func (z *Zookeeper) GetBrokers(key string) []*broker.Client {
 	log.WithFields(log.Fields{
-		"key": queueName,
+		"key": key,
 	}).Info("Get brokers")
 
-	master := z.GetMasterBroker(queueName)
-	replicas := z.GetReplicaBrokers(queueName)
+	master := z.GetMasterBroker(key)
+	replicas := z.GetReplicaBrokers(key)
 	if master != nil {
 		replicas = append(replicas, master)
 	}
 	return replicas
 }
 
-// GetMasterBroker returns the master broker responsible for the queueName
-func (z *Zookeeper) GetMasterBroker(queueName string) *broker.Client {
+// GetMasterBroker returns the master broker responsible for the key
+func (z *Zookeeper) GetMasterBroker(key string) *broker.Client {
 	log.WithFields(log.Fields{
-		"key": queueName,
+		"key": key,
 	}).Info("Get master broker")
 
-	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = True", queueName) // TODO: handle logging errors
+	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = True", key)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"key": queueName,
+			"key": key,
 		}).Warnf("Couldn't get master broker: %s", err.Error())
 		return nil
 	}
@@ -40,19 +40,19 @@ func (z *Zookeeper) GetMasterBroker(queueName string) *broker.Client {
 		err := rows.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key": queueName,
+				"key": key,
 			}).Warnf("Couldn't close rows: %s", err.Error())
 		}
 	}(rows)
 
 	for rows.Next() {
-		var queue string
+		var key string
 		var brokerName string
 		var isMaster bool
-		err = rows.Scan(&queue, &isMaster, &brokerName)
+		err = rows.Scan(&key, &isMaster, &brokerName)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key":       queue,
+				"key":       key,
 				"broker":    brokerName,
 				"is_master": isMaster,
 			}).Warn(err.Error())
@@ -65,16 +65,16 @@ func (z *Zookeeper) GetMasterBroker(queueName string) *broker.Client {
 	return nil
 }
 
-// GetReplicaBrokers returns the replica brokers responsible for the queueName
-func (z *Zookeeper) GetReplicaBrokers(queueName string) []*broker.Client {
+// GetReplicaBrokers returns the replica brokers responsible for the key
+func (z *Zookeeper) GetReplicaBrokers(key string) []*broker.Client {
 	log.WithFields(log.Fields{
-		"key": queueName,
+		"key": key,
 	}).Info("Get replica brokers")
 
-	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = False", queueName)
+	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = False", key)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"key": queueName,
+			"key": key,
 		}).Warnf("Couldn't get replica brokers: %s", err.Error())
 		return []*broker.Client{}
 	}
@@ -83,20 +83,20 @@ func (z *Zookeeper) GetReplicaBrokers(queueName string) []*broker.Client {
 		err := rows.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key": queueName,
+				"key": key,
 			}).Warnf("Couldn't close rows: %s", err.Error())
 		}
 	}(rows)
 
 	result := []*broker.Client{}
 	for rows.Next() {
-		var queue string
+		var key string
 		var brokerName string
 		var isMaster bool
-		err := rows.Scan(&queue, &isMaster, &brokerName)
+		err := rows.Scan(&key, &isMaster, &brokerName)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key":       queue,
+				"key":       key,
 				"broker":    brokerName,
 				"is_master": isMaster,
 			}).Warn(err.Error())
@@ -108,35 +108,44 @@ func (z *Zookeeper) GetReplicaBrokers(queueName string) []*broker.Client {
 	return result
 }
 
-// AssignQueue assigns the queueName to a random broker in the cluster as the master
+// AssignKey assigns the queueName to a random broker in the cluster as the master
 // and assigns the queueName to the remaining brokers in the cluster as replicas
 // TODO: balance the load better than a simple random
 //
 // TODO: add a replica factor k and add queue to k brokers
-func (z *Zookeeper) AssignQueue(queueName string) error {
+func (z *Zookeeper) AssignKey(key string) error {
 	log.WithFields(log.Fields{
-		"key": queueName,
+		"key": key,
 	}).Info("Assign key to a broker")
 
-	randomIndex := rand.Intn(len(z.brokers))
-	counter := 0
-	for _, b := range z.brokers {
-		isMaster := counter == randomIndex
-		counter++
-		err := b.AddQueue(queueName, isMaster)
+	brokers := z.GetFreeBrokers(z.replica)
+
+	for index, b := range brokers {
+		var isMaster bool = false
+		if index == 0 {
+			isMaster = true
+		}
+
+		log.WithFields(log.Fields{
+			"key":       key,
+			"broker":    b.Name,
+			"is_master": isMaster,
+		}).Debug("Assign key to broker with details")
+
+		err := b.AddKey(key, isMaster)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key":       queueName,
+				"key":       key,
 				"broker":    b.Name,
 				"is_master": isMaster,
 			}).Warnf("Couldn't add key to broker upstream: %s", err.Error())
 			return err
 		}
 
-		_, err = z.db.Exec("INSERT INTO queues (queue, broker, is_master) VALUES ($1, $2, $3)", queueName, b.Name, isMaster) // TODO: handle logging errors
+		_, err = z.db.Exec("INSERT INTO queues (queue, broker, is_master) VALUES ($1, $2, $3)", key, b.Name, isMaster)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"key":       queueName,
+				"key":       key,
 				"broker":    b.Name,
 				"is_master": isMaster,
 			}).Warnf("Couldn't add key to database: %s", err.Error())
@@ -144,4 +153,63 @@ func (z *Zookeeper) AssignQueue(queueName string) error {
 		}
 	}
 	return nil
+}
+
+func (z *Zookeeper) GetFreeBrokers(count int) []*broker.Client {
+	log.WithFields(log.Fields{
+		"count": count,
+	}).Info("Get free brokers")
+
+	type MinimumLatencyBroker struct {
+		broker  *broker.Client
+		latency time.Duration
+	}
+	var list []MinimumLatencyBroker
+
+	for _, b := range z.brokers {
+		start := time.Now()
+		err := b.HealthCheck()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"broker": b.Name,
+			}).Warnf("Broker is not healthy: %s", err.Error())
+			continue
+		}
+		latency := time.Since(start)
+		log.WithFields(log.Fields{
+			"broker":  b.Name,
+			"latency": latency,
+		}).Debug("Broker is healthy")
+
+		if len(list) < count {
+			list = append(list, MinimumLatencyBroker{
+				broker:  b,
+				latency: latency,
+			})
+			continue
+		}
+
+		maximumIndex := -1
+		maximumLatency := time.Duration(0)
+		for index, item := range list {
+			if item.latency < maximumLatency {
+				maximumIndex = index
+				maximumLatency = item.latency
+			}
+		}
+		if maximumLatency > latency {
+			list[maximumIndex] = MinimumLatencyBroker{
+				broker:  b,
+				latency: latency,
+			}
+		}
+	}
+	var res []*broker.Client
+	for _, item := range list {
+		log.WithFields(log.Fields{
+			"broker": item.broker.Name,
+		}).Info("Selected broker")
+		res = append(res, item.broker)
+	}
+	return res
 }

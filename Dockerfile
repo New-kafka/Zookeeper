@@ -4,7 +4,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY ./bin/zookeeper ./
-COPY ./config/config.yml ./config/config.yml
+COPY config/sample-config.yml ./config/config.yml
 EXPOSE 8000
 
 ENTRYPOINT ["/app/zookeeper"]
