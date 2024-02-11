@@ -8,6 +8,8 @@ import (
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/zsais/go-gin-prometheus"
+
 	"net/http"
 )
 
@@ -74,6 +76,10 @@ func NewZookeeper() *Zookeeper {
 			"host":   b.Host,
 		}).Info("Registered broker successfully")
 	}
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
+
 	gs.registerRoutes()
 	return gs
 }
