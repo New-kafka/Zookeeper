@@ -3,8 +3,9 @@ package zookeeper
 import (
 	"Zookeeper/internal/broker"
 	"database/sql"
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // GetBrokers returns all brokers in the cluster, including the master and replicas

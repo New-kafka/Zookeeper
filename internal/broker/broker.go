@@ -4,11 +4,14 @@ import (
 	"Zookeeper/internal/routes"
 	"Zookeeper/internal/types"
 	"bytes"
+	"context"
 	"encoding/json"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -21,7 +24,11 @@ func NewBroker(name string, address string) *Client {
 }
 
 func (b *Client) NewRequest(method string, url string, route string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, url+route, body)
+	timeout := time.Duration(10 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, method, url+route, body)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +131,19 @@ func (b *Client) Remove(key string) error {
 
 	err := b.Do(http.MethodPost, apiURL, req, nil)
 	return err
+}
+
+func (b *Client) Export(key string) (*types.ExportRequest, error) {
+	replaceDict := map[string]string{
+		"{key}": key,
+	}
+	apiURL := substringReplace(routes.RouteExport, replaceDict)
+	res := &types.ExportRequest{}
+	err := b.Do(http.MethodGet, apiURL, nil, res)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func substringReplace(s string, replaceDict map[string]string) string {

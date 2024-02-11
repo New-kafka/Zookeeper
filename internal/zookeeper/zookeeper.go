@@ -4,11 +4,13 @@ import (
 	"Zookeeper/internal/broker"
 	"Zookeeper/internal/types"
 	"database/sql"
+	"errors"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"net/http"
 )
 
 type Zookeeper struct {
@@ -128,6 +130,7 @@ func (s *Zookeeper) Push(c *gin.Context) {
 				"key":    elem.Key,
 				"broker": b.Name,
 			}).Warnf("Couldn't push message to broker: %s", err.Error())
+			s.handle_down_broker(b)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -151,6 +154,7 @@ func (s *Zookeeper) Pop(c *gin.Context) {
 			log.WithFields(log.Fields{
 				"broker": b.Name,
 			}).Warnf("Couldn't get front value: %s", err.Error())
+			s.handle_down_broker(b)
 			continue
 		}
 		if res.Key == "" {
@@ -192,4 +196,133 @@ func (s *Zookeeper) Erase(key string) {
 			}).Warnf("Couldn't remove message from broker: %s", err.Error())
 		}
 	}
+}
+
+func (s *Zookeeper) handle_down_broker(b *broker.Client) {
+	err := b.HealthCheck()
+	if err != nil {
+		// get all keys assigned to the broker ans isMaster = True
+		rows, err := s.db.Query("SELECT * FROM queues WHERE broker = $1 AND is_master = True", b.Name)
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"broker": b.Name,
+			}).Warnf("Couldn't get keys from database: %s", err.Error())
+			return
+		}
+
+		defer func(rows *sql.Rows) {
+			err := rows.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"broker": b.Name,
+				}).Warnf("Couldn't close rows: %s", err.Error())
+			}
+		}(rows)
+
+		for rows.Next() {
+			var key string
+			var brokerName string
+			var isMaster bool
+			err := rows.Scan(&key, &isMaster, &brokerName)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"key":       key,
+					"broker":    brokerName,
+					"is_master": isMaster,
+				}).Warnf("Couldn't scan row: %s", err.Error())
+				continue
+			}
+
+			if !isMaster {
+				continue
+			} else {
+				replicas := s.GetReplicaBrokers(key)
+				if len(replicas) == 0 {
+					log.WithFields(log.Fields{
+						"key": key,
+					}).Warn("No replica brokers found for key")
+					continue
+				}
+				// set one replica as master
+				err := s.db.QueryRow("UPDATE queues SET is_master = True WHERE queue = $1 AND broker = $2 RETURNING queue", key, replicas[0].Name).Scan(&key)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"key":    key,
+						"broker": replicas[0].Name,
+					}).Warnf("Couldn't set replica as master: %s", err.Error())
+				}
+
+				log.WithFields(log.Fields{
+					"key":    key,
+					"broker": replicas[0].Name,
+				}).Info("Set replica as master")
+			}
+		}
+		// delete broker from map and database
+		delete(s.brokers, b.Name)
+		_, err = s.db.Exec("DELETE FROM brokers WHERE name = $1", b.Name)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"broker": b.Name,
+			}).Warnf("Couldn't delete broker from database: %s", err.Error())
+		}
+
+		log.WithFields(log.Fields{
+			"broker": b.Name,
+		}).Info("Deleted broker from map and database")
+	}
+}
+
+func (s *Zookeeper) get_key_contents(key string) ([][]byte, error) {
+	log.WithFields(log.Fields{
+		"key": key,
+	}).Info("Get key contents")
+
+	// get brokers responsible for the key
+	rows, err := s.db.Query("SELECT * FROM queues WHERE queue = $1", key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"key": key,
+		}).Warnf("Couldn't get brokers for key: %s", err.Error())
+		return nil, err
+	}
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"key": key,
+			}).Warnf("Couldn't close rows: %s", err.Error())
+		}
+	}(rows)
+
+	for rows.Next() {
+		var key string
+		var brokerName string
+		var isMaster bool
+		err = rows.Scan(&key, &isMaster, &brokerName)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"key":       key,
+				"broker":    brokerName,
+				"is_master": isMaster,
+			}).Warn(err.Error())
+			return nil, err
+		}
+		// get broker
+		b := s.brokers[brokerName]
+		// get contents of the key
+		contents, err := b.Export(key)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"key":    key,
+				"broker": brokerName,
+			}).Warnf("Couldn't get contents of key: %s", err.Error())
+			return nil, err
+		}
+		return contents.Values, nil
+	}
+	//error
+	return nil, errors.New("No broker found for key")
 }

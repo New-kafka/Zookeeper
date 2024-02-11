@@ -14,6 +14,11 @@ type Element struct {
 	Value []byte `json:"value" binding:"required"`
 }
 
+type ExportRequest struct {
+	Key    string   `json:"key" binding:"required"`
+	Values [][]byte `json:"values" binding:"required"`
+}
+
 type PopResponse struct {
 	Key   string `json:"key"`
 	Value []byte `json:"value"`
