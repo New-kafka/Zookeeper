@@ -5,5 +5,7 @@ const (
 	RoutePop    = "/key/{key}/pop"
 	RouteFront  = "/front"
 	RouteKey    = "/key"
-	RouteExport = "/key/{key}/export"
+	RouteMaster = "/key/{key}/set_master"
+	RouteExport = "/export"
+	RouteImport = "/import"
 )

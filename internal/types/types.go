@@ -15,8 +15,17 @@ type Element struct {
 }
 
 type ExportRequest struct {
-	Key    string   `json:"key" binding:"required"`
+	Key string `json:"key" binding:"required"`
+}
+
+type ExportResponse struct {
 	Values [][]byte `json:"values" binding:"required"`
+}
+
+type ImportRequest struct {
+	Key      string   `json:"key" binding:"required"`
+	Values   [][]byte `json:"values" binding:"required"`
+	IsMaster bool     `json:"isMaster" binding:"required"`
 }
 
 type PopResponse struct {
@@ -27,4 +36,8 @@ type PopResponse struct {
 type AddKeyRequest struct {
 	Key      string `json:"key"`
 	IsMaster bool   `json:"isMaster"`
+}
+
+type KeySetMasterRequest struct {
+	MasterStatus bool `json:"masterStatus"`
 }
