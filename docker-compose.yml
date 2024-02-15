@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  zookeeper:
+    container_name: "zookeeper"
+    image: ghcr.io/new-kafka/zookeeper:latest
+    healthcheck:
+      test: curl --fail http://localhost:8000/healthz || exit 1
+      interval: 1m
+      timeout: 30s
+      retries: 3
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./zookeeper/config:/app/config
+    depends_on:
+      postgres-zookeeper:
+        condition: service_healthy
+    networks:
+      - kafka
+
+  postgres-zookeeper:
+    container_name: "postgres-zookeeper"
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./zookeeper/data:/var/lib/postgresql/data
+      - ./zookeeper/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+        test: ["CMD", "pg_isready", "-U", "postgres"]
+        interval: 1m
+        timeout: 30s
+        retries: 3
+    networks:
+        - kafka
+
+networks:
+    kafka:
+        driver: bridge
