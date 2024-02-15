@@ -41,3 +41,11 @@ jobs:
           docker tag ghcr.io/new-kafka/zookeeper:${{ github.sha }} ghcr.io/new-kafka/zookeeper:latest
           docker push ghcr.io/new-kafka/zookeeper:${{ github.sha }}
           docker push ghcr.io/new-kafka/zookeeper:latest
+
+      - uses: alex-ac/github-action-ssh-docker-compose@master
+        name: Docker-Compose Remote Deployment
+        with:
+          ssh_host: 46.249.98.100
+          ssh_private_key: ${{ secrets.PRIVATE_KEY }}
+          ssh_user: ${{ secrets.SSH_USER }}
+          docker_compose_prefix: docker-compose
