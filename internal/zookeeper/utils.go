@@ -3,19 +3,20 @@ package zookeeper
 import (
 	"Zookeeper/internal/broker"
 	"database/sql"
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // GetBrokers returns all brokers in the cluster, including the master and replicas
 // which are responsible for the key
-func (z *Zookeeper) GetBrokers(key string) []*broker.Client {
+func (s *Zookeeper) GetBrokers(key string) []*broker.Client {
 	log.WithFields(log.Fields{
 		"key": key,
 	}).Info("Get brokers")
 
-	master := z.GetMasterBroker(key)
-	replicas := z.GetReplicaBrokers(key)
+	master := s.GetMasterBroker(key)
+	replicas := s.GetReplicaBrokers(key)
 	if master != nil {
 		replicas = append(replicas, master)
 	}
@@ -23,12 +24,12 @@ func (z *Zookeeper) GetBrokers(key string) []*broker.Client {
 }
 
 // GetMasterBroker returns the master broker responsible for the key
-func (z *Zookeeper) GetMasterBroker(key string) *broker.Client {
+func (s *Zookeeper) GetMasterBroker(key string) *broker.Client {
 	log.WithFields(log.Fields{
 		"key": key,
 	}).Info("Get master broker")
 
-	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = True", key)
+	rows, err := s.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = True", key)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"key": key,
@@ -59,19 +60,19 @@ func (z *Zookeeper) GetMasterBroker(key string) *broker.Client {
 			return nil
 		}
 		if isMaster {
-			return z.brokers[brokerName]
+			return s.brokers[brokerName]
 		}
 	}
 	return nil
 }
 
 // GetReplicaBrokers returns the replica brokers responsible for the key
-func (z *Zookeeper) GetReplicaBrokers(key string) []*broker.Client {
+func (s *Zookeeper) GetReplicaBrokers(key string) []*broker.Client {
 	log.WithFields(log.Fields{
 		"key": key,
 	}).Info("Get replica brokers")
 
-	rows, err := z.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = False", key)
+	rows, err := s.db.Query("SELECT * FROM queues WHERE queue = $1 AND is_master = False", key)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"key": key,
@@ -102,7 +103,7 @@ func (z *Zookeeper) GetReplicaBrokers(key string) []*broker.Client {
 			}).Warn(err.Error())
 		}
 		if !isMaster {
-			result = append(result, z.brokers[brokerName])
+			result = append(result, s.brokers[brokerName])
 		}
 	}
 	return result
@@ -113,12 +114,12 @@ func (z *Zookeeper) GetReplicaBrokers(key string) []*broker.Client {
 // TODO: balance the load better than a simple random
 //
 // TODO: add a replica factor k and add queue to k brokers
-func (z *Zookeeper) AssignKey(key string) error {
+func (s *Zookeeper) AssignKey(key string) error {
 	log.WithFields(log.Fields{
 		"key": key,
 	}).Info("Assign key to a broker")
 
-	brokers := z.GetFreeBrokers(z.replica)
+	brokers := s.GetFreeBrokers(s.replica)
 
 	for index, b := range brokers {
 		var isMaster bool = false
@@ -142,7 +143,7 @@ func (z *Zookeeper) AssignKey(key string) error {
 			return err
 		}
 
-		_, err = z.db.Exec("INSERT INTO queues (queue, broker, is_master) VALUES ($1, $2, $3)", key, b.Name, isMaster)
+		_, err = s.db.Exec("INSERT INTO queues (queue, broker, is_master) VALUES ($1, $2, $3)", key, b.Name, isMaster)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"key":       key,
@@ -155,7 +156,7 @@ func (z *Zookeeper) AssignKey(key string) error {
 	return nil
 }
 
-func (z *Zookeeper) GetFreeBrokers(count int) []*broker.Client {
+func (s *Zookeeper) GetFreeBrokers(count int) []*broker.Client {
 	log.WithFields(log.Fields{
 		"count": count,
 	}).Info("Get free brokers")
@@ -166,25 +167,19 @@ func (z *Zookeeper) GetFreeBrokers(count int) []*broker.Client {
 	}
 	var list []MinimumLatencyBroker
 
-	for _, b := range z.brokers {
-		start := time.Now()
-		err := b.HealthCheck()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"broker": b.Name,
-			}).Warnf("Broker is not healthy: %s", err.Error())
+	for _, b := range s.brokers {
+		if !b.Health {
 			continue
 		}
-		latency := time.Since(start)
 		log.WithFields(log.Fields{
 			"broker":  b.Name,
-			"latency": latency,
+			"latency": b.Latency,
 		}).Debug("Broker is healthy")
 
 		if len(list) < count {
 			list = append(list, MinimumLatencyBroker{
 				broker:  b,
-				latency: latency,
+				latency: b.Latency,
 			})
 			continue
 		}
@@ -197,10 +192,10 @@ func (z *Zookeeper) GetFreeBrokers(count int) []*broker.Client {
 				maximumLatency = item.latency
 			}
 		}
-		if maximumLatency > latency {
+		if maximumLatency > b.Latency {
 			list[maximumIndex] = MinimumLatencyBroker{
 				broker:  b,
-				latency: latency,
+				latency: b.Latency,
 			}
 		}
 	}

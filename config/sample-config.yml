@@ -1,4 +1,7 @@
 health_check_path: "/healthz"
+broker_health_check_interval: 10s
+auto_scaling_interval: 15s
+scale_factor: 2
 port: 8000
 replica: 1
 brokers:
