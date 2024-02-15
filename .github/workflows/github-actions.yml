@@ -11,7 +11,7 @@ on:
   pull_request:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout GitHub Action'
@@ -22,7 +22,26 @@ jobs:
         with:
           go-version: '^1.21.5'
 
-      - name: 'Go Tidy'
+      - name: 'Go Vendor'
+        run: make resolve
+
+      - name: 'Go Test'
+        run: make test
+
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    needs:
+      - test
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@main
+
+      - name: 'Setup Go'
+        uses: actions/setup-go@v4
+        with:
+          go-version: '^1.21.5'
+
+      - name: 'Go Vendor'
         run: make resolve
 
       - name: 'Build Binary'
@@ -42,8 +61,18 @@ jobs:
           docker push ghcr.io/new-kafka/zookeeper:${{ github.sha }}
           docker push ghcr.io/new-kafka/zookeeper:latest
 
+  deploy:
+    runs-on: ubuntu-latest
+    environment: Production
+    needs:
+      - build-and-push-image
+
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@main
+
       - uses: alex-ac/github-action-ssh-docker-compose@master
-        name: Docker-Compose Remote Deployment
+        name: 'Docker-Compose Remote Deployment'
         with:
           ssh_host: 46.249.98.100
           ssh_private_key: ${{ secrets.PRIVATE_KEY }}

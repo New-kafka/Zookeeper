@@ -274,7 +274,7 @@ func (s *Zookeeper) BrokerHealthChecker(b *broker.Client) {
 				if err != nil {
 					log.WithFields(log.Fields{
 						"broker": b.Name,
-					}).Error("Couldn't recover from broker failure: %s", err.Error())
+					}).Errorf("Couldn't recover from broker failure: %s", err.Error())
 				} else {
 					b.Health = false
 				}
@@ -382,7 +382,7 @@ func (s *Zookeeper) Push(c *gin.Context) {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"key": elem.Key,
-			}).Warn("Couldn't assign key to a broker: %s", err.Error())
+			}).Warnf("Couldn't assign key to a broker: %s", err.Error())
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
