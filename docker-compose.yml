@@ -1,8 +1,8 @@
 version: "3.8"
 
 services:
-  zookeeper:
-    container_name: "zookeeper"
+  zookeeper1:
+    container_name: "zookeeper1"
     image: ghcr.io/new-kafka/zookeeper:latest
     healthcheck:
       test: curl --fail http://localhost:8000/healthz || exit 1
@@ -10,7 +10,7 @@ services:
       timeout: 30s
       retries: 3
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./zookeeper/config:/app/config
     depends_on:
@@ -19,25 +19,105 @@ services:
     networks:
       - kafka
 
-  postgres-zookeeper:
-    container_name: "postgres-zookeeper"
-    image: postgres:13
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./zookeeper/data:/var/lib/postgresql/data
-      - ./zookeeper/init.sql:/docker-entrypoint-initdb.d/init.sql
+  zookeeper2:
+    container_name: "zookeeper2"
+    image: ghcr.io/new-kafka/zookeeper:latest
     healthcheck:
-        test: ["CMD", "pg_isready", "-U", "postgres"]
-        interval: 1m
-        timeout: 30s
-        retries: 3
+      test: curl --fail http://localhost:8000/healthz || exit 1
+      interval: 1m
+      timeout: 30s
+      retries: 3
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./zookeeper/config:/app/config
+    depends_on:
+      postgres-zookeeper:
+        condition: service_healthy
     networks:
-        - kafka
+      - kafka
+
+  zookeeper-patroni1:
+    container_name: "zookeeper-patroni1"
+    image: registry.cafebazaar.ir:5000/infrastructure/integration/sib/ansible/patroni/patroni:1.1.10
+    hostname: zookeeper-patroni1
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
+
+    environment:
+      - BACKUP_DIR=/home/postgres/backups
+      - MAX_BACKUP_COUNT=30
+      - POSTGRES_BACKUP_USER=postgres
+      - PATRONI_ETCD3_HOSTS='etcd1:2379','etcd2:2379','etcd3:2379',
+      - PATRONI_SCOPE=postgres
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=etcd1:8008
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=etcd1:7432
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
+      - PATRONI_POSTGRESQL_DATA_DIR=/home/postgres/data
+      - PATRONI_REPLICATION_SSLMODE=disable
+      - PATRONI_SUPERUSER_SSLMODE=disable
+      - PATRONI_RESTAPI_USERNAME=patroni-api-admin
+      - PATRONI_RESTAPI_PASSWORD=0bdd0b25a9ba3245240fd784a63c1622
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=A1kXZHbzVhLwtg98KR76
+      - PATRONI_REPLICATION_USERNAME=kafka_replication
+      - PATRONI_REPLICATION_PASSWORD=b475ff40dd67sazd6dfef9f23e05136b7
+      - PATRONI_admin_PASSWORD=43c525f7177ce97ds99763c691533f1e4
+      - PATRONI_admin_OPTIONS=createdb,
+      - PATRONI_NAME=zookeeper-patroni1
+    ports:
+      - "8008:8008"
+      - "7432:5432"
+    volumes:
+      - ./zookeeper/data:/home/postgresql/data
+      - ./zookeeper/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  zookeeper-patroni2:
+    container_name: "zookeeper-patroni2"
+    image: registry.cafebazaar.ir:5000/infrastructure/integration/sib/ansible/patroni/patroni:1.1.10
+    hostname: zookeeper-patroni2
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
+
+    environment:
+      - BACKUP_DIR=/home/postgres/backups
+      - MAX_BACKUP_COUNT=30
+      - POSTGRES_BACKUP_USER=postgres
+      - PATRONI_ETCD3_HOSTS='etcd1:2379','etcd2:2379','etcd3:2379',
+      - PATRONI_SCOPE=postgres
+      - PATRONI_RESTAPI_CONNECT_ADDRESS=etcd2:8008
+      - PATRONI_POSTGRESQL_CONNECT_ADDRESS=etcd2:7432
+      - PATRONI_RESTAPI_LISTEN=0.0.0.0:8008
+      - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
+      - PATRONI_POSTGRESQL_DATA_DIR=/home/postgres/data
+      - PATRONI_REPLICATION_SSLMODE=disable
+      - PATRONI_SUPERUSER_SSLMODE=disable
+      - PATRONI_RESTAPI_USERNAME=patroni-api-admin
+      - PATRONI_RESTAPI_PASSWORD=0bdd0b25a9ba3245240fd784a63c1622
+      - PATRONI_SUPERUSER_USERNAME=postgres
+      - PATRONI_SUPERUSER_PASSWORD=A1kXZHbzVhLwtg98KR76
+      - PATRONI_REPLICATION_USERNAME=kafka_replication
+      - PATRONI_REPLICATION_PASSWORD=b475ff40dd67sazd6dfef9f23e05136b7
+      - PATRONI_admin_PASSWORD=43c525f7177ce97ds99763c691533f1e4
+      - PATRONI_admin_OPTIONS=createdb,
+      - PATRONI_NAME=zookeeper-patroni2
+    ports:
+      - "8008:8008"
+      - "7432:5432"
+    volumes:
+      - ./zookeeper/data:/home/postgresql/data
+      - ./zookeeper/init.sql:/docker-entrypoint-initdb.d/init.sql
 
 networks:
     kafka:
